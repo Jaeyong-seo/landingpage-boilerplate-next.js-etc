@@ -1,116 +1,155 @@
-# Boilerplate Overview
+# Next.js Landing & Waitlist Boilerplate
 
-## Next.js Landing & Waiting List Boilerplate
+A lightweight boilerplate to ship a **landing page + waiting list** fast, with optional “real ops” integrations (storage, notifications, analytics, CMS) that **never block local/dev by default**.
 
-### 1. Overview
+## Tech stack
+- **Next.js (App Router)** + Server Components
+- **Tailwind CSS** + **shadcn/ui**
+- **React Hook Form** + **Zod** (shared validation)
+- Optional: **Supabase** (storage), **Discord Webhook** (notify), **PostHog** (analytics), **Sanity** (CMS)
 
-This boilerplate is designed as a **lightweight landing page and waiting list system** for early-stage products, communities, or events.
+## Quick start (step-by-step)
 
-The primary goal is **fast launch and validation**, while still accounting for basic operational needs such as data collection, internal notifications, and simple analytics.
+### 0) Prerequisites
+- Node.js **LTS**
+- `npm`
 
-It focuses on clarity, speed, and extensibility rather than over-engineering.
+Verify:
 
----
+```bash
+node -v
+npm -v
+```
 
-### 2. Tech Stack
+### 1) Install
 
-#### Framework & UI
+```bash
+npm install
+```
 
-**Next.js (App Router)**
-Pages, server logic, and APIs are managed within a single project.
-The App Router and Server Components are used to ensure good initial performance and future scalability.
+Verify:
 
-**Tailwind CSS**
-Utility-first styling enables rapid UI development and consistent design across the project.
+```bash
+npm run lint
+npm run typecheck
+```
 
-**shadcn/ui**
-Headless UI components built on Radix.
-Provides accessibility by default while remaining fully customizable.
+### 2) Env (optional)
+All integrations are optional. You can run without any env set.
 
----
+- Copy `.env.example` → `.env.local`
 
-#### Forms & Validation
+Verify env format + enabled/disabled flags:
 
-**React Hook Form**
-Handles form state efficiently with minimal re-renders, optimized for performance.
+```bash
+npm run verify:env
+```
 
-**Zod**
-Schema-based validation shared between frontend and server.
-Ensures a single source of truth for input validation rules.
+### 3) Run locally
 
----
+```bash
+npm run dev
+```
 
-#### Data & Backend
+Verify:
+- `GET /api/health` should return `{ ok: true }`
+- `GET /api/diagnostics` shows which integrations are enabled
+- Submit the waitlist form on `/`
 
-**Supabase**
-PostgreSQL-based backend used primarily for storing waiting list submissions.
-Authentication is intentionally omitted in the initial phase, keeping the setup simple while allowing future expansion.
+### 4) One-shot verification
 
----
+```bash
+npm run verify
+```
 
-#### CMS
+## Feature verification checklist
+- **Waitlist API**: `POST /api/waitlist` returns `200` (or `409` for duplicates)
+- **Spam prevention**:
+  - Duplicate email returns `409`
+  - Honeypot field is silently accepted (to reduce bot feedback)
+  - Rate limit returns `429` after repeated rapid requests
+- **Admin**:
+  - If `ADMIN_TOKEN` unset: `/admin` shows “disabled”
+  - If `ADMIN_TOKEN` set: `/admin?token=...` shows recent submissions and search
 
-**Sanity**
-Headless CMS used to manage event or meetup content such as titles, descriptions, schedules, and images.
-Allows non-developers to update content without code changes.
+## Optional integrations
 
----
+### Supabase storage (optional)
+Set env:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY` (server-side only)
 
-#### Notifications
+Recommended migration:
+- Run the SQL in [`supabase/migrations/001_waitlist_submissions.sql`](/Users/seojaeyong/landingpage-boilerplate-next.js-etc/supabase/migrations/001_waitlist_submissions.sql)
 
-**Discord Webhook**
-Triggers internal notifications whenever a new waiting list submission is received.
-Chosen for speed and simplicity during early operations.
+Notes:
+- **RLS enabled** is recommended. With **no policies**, only service role can access (service role bypasses RLS).
+- This boilerplate writes server-side via `/api/waitlist` (recommended), so you typically do **not** need anon policies.
 
----
+Expected table example (minimal):
 
-#### Analytics
+```sql
+create table if not exists public.waitlist_submissions (
+  id uuid primary key,
+  email text unique not null,
+  name text,
+  message text,
+  created_at timestamptz not null default now(),
+  metadata jsonb
+);
+```
 
-**PostHog**
-Event-based analytics to track user behavior across the landing page.
-Key events include page visits, event clicks, and waiting list submissions.
+Verify (table exists + write + read):
 
----
+```bash
+npm run verify:integrations
+```
 
-#### Deployment
+### Discord webhook (optional)
+Set:
+- `DISCORD_WEBHOOK_URL`
 
-**Vercel**
-Used for deploying the Next.js application.
-Supports fast iteration with preview environments and clear separation between production and staging.
+Behavior:
+- A new submission posts a message to Discord (errors are ignored so core flow never breaks).
 
----
+### PostHog analytics (optional)
+Set:
+- `NEXT_PUBLIC_POSTHOG_KEY`
+- `NEXT_PUBLIC_POSTHOG_HOST` (optional, defaults to `https://app.posthog.com`)
 
-### 3. Operational Considerations
+Behavior:
+- Client initializes PostHog and captures `waitlist_submitted`.
 
-This boilerplate goes beyond UI and accounts for real-world operational needs:
+Verify:
+- Sends a server-side test event `verify_integrations` via PostHog capture endpoint
 
-**Environment Variable Management**
-Server-only secrets and client-exposed keys are clearly separated.
-Missing required environment variables trigger immediate errors.
+```bash
+npm run verify:integrations
+```
 
-**Spam Prevention (Lightweight)**
-Duplicate email prevention
-Honeypot fields for basic bot protection
-Simple rate limiting on submissions
+### Sanity CMS (optional)
+Set:
+- `SANITY_PROJECT_ID`
+- `SANITY_DATASET`
+- `SANITY_API_VERSION`
 
-**Observability**
-Both successful and failed submissions are tracked as events.
-UTM parameters and event-level interest can be analyzed per meetup or campaign.
+Behavior:
+- If a `landing` document exists with `heroTitle` / `heroSubtitle`, the hero section can be CMS-driven.
 
----
+Schema:
+- Copy [`sanity/schemaTypes/landing.ts`](/Users/seojaeyong/landingpage-boilerplate-next.js-etc/sanity/schemaTypes/landing.ts) into your Sanity Studio project schema types.
 
-### 4. Lightweight Admin Access
+Content creation guide (minimal):
+- Create a document of type `landing`
+- Fill `heroTitle` and/or `heroSubtitle`
 
-Instead of a full admin dashboard, the boilerplate assumes a **minimal admin view** for early-stage operation:
+Verify (fetch):
 
-* View recent waiting list submissions
-* Basic filtering by event
-* Server-side data access only
-* Simple access control (Basic Auth or single-token access)
+```bash
+npm run verify:integrations
+```
 
-The goal is to let operators quickly answer one question:
-**“What is coming in right now?”**
+## Deployment (Vercel)
+- Deploy as a standard Next.js app
+- Add the env vars you need (all are optional)
 
----
-
-This boilerplate is intended to be opinionated but flexible — optimized for teams that want to ship early, learn fast, and evolve their system incrementally.
